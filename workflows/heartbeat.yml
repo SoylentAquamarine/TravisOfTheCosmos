@@ -1,0 +1,25 @@
+name: Travis Heartbeat
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:        # allows manual run too
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Log success
+        run: |
+          echo "Heartbeat success at $(date)" >> heartbeat.log
+
+      - name: Commit and push
+        run: |
+          git config user.name "Travis of the Cosmos"
+          git config user.email "Travis.of.the.Cosmos.AI@gmail.com"
+          git add heartbeat.log
+          git commit -m "Heartbeat log update [skip ci]" || echo "No changes"
+          git push
