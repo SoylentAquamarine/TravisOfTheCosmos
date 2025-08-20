@@ -1,22 +1,26 @@
-name: Travis Heartbeat Dropbox
+name: Travis Heartbeat Dropbox Append
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
     steps:
-      - name: Create log entry
-        run: |
-          echo "Heartbeat success at $(date)" > heartbeat.log
+      - name: Create log line
+        run: echo "Heartbeat success at $(date)" > line.txt
 
-      - name: Upload to Dropbox
+      - name: Upload append to Dropbox
         run: |
-          curl -X POST https://content.dropboxapi.com/2/files/upload \
+          SESSION=$(curl -s -X POST https://content.dropboxapi.com/2/files/upload_session/start \
             --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
-            --header "Dropbox-API-Arg: {\"path\": \"/heartbeat.log\",\"mode\": \"append\",\"autorename\": false,\"mute\": false}" \
             --header "Content-Type: application/octet-stream" \
-            --data-binary @heartbeat.log
+            --data-binary @line.txt | jq -r '.session_id')
+
+          curl -X POST https://content.dropboxapi.com/2/files/upload_session/finish \
+            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
+            --header "Content-Type: application/octet-stream" \
+            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": 0}, \"commit\": {\"path\": \"/Travis/system/heartbeat.log\", \"mode\": \"append\", \"autorename\": false, \"mute\": false}}" \
+            --data-binary @line.txt
