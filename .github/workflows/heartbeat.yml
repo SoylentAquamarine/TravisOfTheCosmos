@@ -14,13 +14,23 @@ jobs:
 
       - name: Upload append to Dropbox
         run: |
+          # Start session
           SESSION=$(curl -s -X POST https://content.dropboxapi.com/2/files/upload_session/start \
             --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
             --header "Content-Type: application/octet-stream" \
             --data-binary @line.txt | jq -r '.session_id')
 
+          # Append to session
+          curl -X POST https://content.dropboxapi.com/2/files/upload_session/append_v2 \
+            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
+            --header "Content-Type: application/octet-stream" \
+            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": 0}}" \
+            --data-binary @line.txt
+
+          # Finish session and commit to file
+          FILESIZE=$(wc -c < line.txt)
           curl -X POST https://content.dropboxapi.com/2/files/upload_session/finish \
             --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
             --header "Content-Type: application/octet-stream" \
-            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": 0}, \"commit\": {\"path\": \"/Travis/system/heartbeat.log\", \"mode\": \"append\", \"autorename\": false, \"mute\": false}}" \
+            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": $FILESIZE}, \"commit\": {\"path\": \"/Travis/system/heartbeat.log\", \"mode\": \"add\", \"autorename\": false, \"mute\": false}}" \
             --data-binary @line.txt
