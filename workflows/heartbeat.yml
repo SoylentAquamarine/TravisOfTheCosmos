@@ -1,25 +1,22 @@
-name: Travis Heartbeat
+name: Travis Heartbeat Dropbox
 
 on:
   schedule:
     - cron: "*/5 * * * *"   # every 5 minutes
-  workflow_dispatch:        # allows manual run too
+  workflow_dispatch:
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
-
-      - name: Log success
+      - name: Create log entry
         run: |
-          echo "Heartbeat success at $(date)" >> heartbeat.log
+          echo "Heartbeat success at $(date)" > heartbeat.log
 
-      - name: Commit and push
+      - name: Upload to Dropbox
         run: |
-          git config user.name "Travis of the Cosmos"
-          git config user.email "Travis.of.the.Cosmos.AI@gmail.com"
-          git add heartbeat.log
-          git commit -m "Heartbeat log update [skip ci]" || echo "No changes"
-          git push
+          curl -X POST https://content.dropboxapi.com/2/files/upload \
+            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
+            --header "Dropbox-API-Arg: {\"path\": \"/heartbeat.log\",\"mode\": \"append\",\"autorename\": false,\"mute\": false}" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary @heartbeat.log
