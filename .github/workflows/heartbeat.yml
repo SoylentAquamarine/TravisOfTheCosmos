@@ -29,19 +29,26 @@ jobs:
       - name: Download existing heartbeat.log from S3 (if any)
         run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous log"
 
+      # ✅ Install rclone for Dropbox
+      - name: Set up rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+          mkdir -p ~/.config/rclone
+          echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
+        env:
+          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
+
       # ✅ Append new heartbeat entry with lifetime counters
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-          # Create birthday if missing
+          # Create birthday if missing (only first run)
           if [ ! -f .travis_birth ]; then
             BIRTHDAY=$(date -u +"%Y-%m-%d")
             echo "BIRTHDAY=$BIRTHDAY" > .travis_birth
+            # Upload once and never touch again
             aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
-            curl https://rclone.org/install.sh | sudo bash
-            mkdir -p ~/.config/rclone
-            echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
             rclone copy .travis_birth dropbox:/.travis_birth
           else
             BIRTHDAY=$(cat .travis_birth | cut -d= -f2)
@@ -54,15 +61,6 @@ jobs:
           YEARS=$((DAYS / 365))
 
           echo "$TIMESTAMP :: Day $DAYS :: Week $WEEKS :: Month $MONTHS :: Year $YEARS :: Travis heartbeat OK" >> heartbeat.log
-
-      # ✅ Install rclone for Dropbox
-      - name: Set up rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-          mkdir -p ~/.config/rclone
-          echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
-        env:
-          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
 
       # ✅ Upload heartbeat.log to Dropbox
       - name: Upload heartbeat.log to Dropbox
