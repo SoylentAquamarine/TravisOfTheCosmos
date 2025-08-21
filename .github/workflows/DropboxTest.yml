@@ -1,0 +1,25 @@
+name: dropbox-test
+
+on:
+  workflow_dispatch: # manual trigger only
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install rclone
+        run: curl https://rclone.org/install.sh | sudo bash || echo "rclone install failed"
+
+      - name: Create rclone.conf
+        run: |
+          cat > rclone.conf <<EOF
+          [dropbox]
+          type = dropbox
+          token = ${{ secrets.DROPBOX_TOKEN }}
+          EOF
+
+      - name: Make test file
+        run: echo "Hello Dropbox, $(date)" > test.txt
+
+      - name: Upload test file to Dropbox
+        run: rclone --config rclone.conf copy test.txt dropbox:/ || echo "Dropbox upload failed"
