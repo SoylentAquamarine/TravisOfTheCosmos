@@ -2,7 +2,7 @@ name: Travis Heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Every 5 minutes
+    - cron: "*/5 * * * *"   # Every 5 minutes (GitHub minimum)
   workflow_dispatch:
 
 jobs:
@@ -47,7 +47,6 @@ jobs:
           if [ ! -f .travis_birth ]; then
             BIRTHDAY=$(date -u +"%Y-%m-%d")
             echo "BIRTHDAY=$BIRTHDAY" > .travis_birth
-            # Upload once and never touch again
             aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
             rclone copy .travis_birth dropbox:/.travis_birth
           else
@@ -62,6 +61,14 @@ jobs:
 
           echo "$TIMESTAMP :: Day $DAYS :: Week $WEEKS :: Month $MONTHS :: Year $YEARS :: Travis heartbeat OK" >> heartbeat.log
 
+          # Save counters for later step
+          echo "BIRTHDAY=$BIRTHDAY" >> $GITHUB_ENV
+          echo "DAYS=$DAYS" >> $GITHUB_ENV
+          echo "WEEKS=$WEEKS" >> $GITHUB_ENV
+          echo "MONTHS=$MONTHS" >> $GITHUB_ENV
+          echo "YEARS=$YEARS" >> $GITHUB_ENV
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+
       # ✅ Upload heartbeat.log to Dropbox
       - name: Upload heartbeat.log to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
@@ -69,3 +76,34 @@ jobs:
       # ✅ Upload heartbeat.log to S3
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
+
+      # ✅ Generate state.json snapshot
+      - name: Generate state.json
+        run: |
+          COUNT=$(wc -l < heartbeat.log)
+          cat > state.json <<EOF
+          {
+            "last_run": "${TIMESTAMP}",
+            "heartbeat_count": $COUNT,
+            "birthday": "${BIRTHDAY}",
+            "days_alive": ${DAYS},
+            "weeks_alive": ${WEEKS},
+            "months_alive": ${MONTHS},
+            "years_alive": ${YEARS},
+            "last_status": "success"
+          }
+          EOF
+
+          aws s3 cp state.json s3://travis-of-the-cosmos/state.json
+          rclone copy state.json dropbox:/state.json
+
+      # ✅ Push state.json into ChatGPT memory
+      - name: Push state.json to ChatGPT memory
+        run: |
+          curl -s https://api.openai.com/v1/memories/update \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
+            -d "{
+              \"project\": \"TravisOfTheCosmos\",
+              \"update\": $(cat state.json)
+            }"
