@@ -1,8 +1,8 @@
-name: Travis Heartbeat
+name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Every 5 minutes
+    - cron: "*/30 * * * *"   # every 30 minutes (adjust if needed)
   workflow_dispatch:
 
 jobs:
@@ -13,123 +13,42 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ✅ Configure AWS first
+      - name: Download birthday file if it exists
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file yet"
+
+      - name: Download existing heartbeat.log from S3 (if any)
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
+
+      - name: Generate heartbeat entry
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "$TIMESTAMP heartbeat" >> heartbeat.log
+          # Create/update heartbeat.json for the website
+          echo "{\"timestamp\": \"$TIMESTAMP\"}" > heartbeat.json
+
+      - name: Set up rclone
+        run: curl https://rclone.org/install.sh | sudo bash
+
+      - name: Upload heartbeat.log to Dropbox
+        run: rclone copy heartbeat.log dropbox:/heartbeat.log
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: us-east-1
 
-      # ✅ Pull birthday file if it exists
-      - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file yet"
-
-      # ✅ Pull existing heartbeat log if it exists
-      - name: Download existing heartbeat.log from S3 (if any)
-        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous log"
-
-      # ✅ Install rclone for Dropbox
-      - name: Set up rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
-          mkdir -p ~/.config/rclone
-          echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
-        env:
-          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
-
-      # ✅ Append heartbeat entry + calculate lifetime
-      - name: Generate heartbeat entry
-        run: |
-          START=$(date +%s)
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Create birthday if missing
-          if [ ! -f .travis_birth ]; then
-            BIRTHDAY=$(date -u +"%Y-%m-%d")
-            echo "BIRTHDAY=$BIRTHDAY" > .travis_birth
-            aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
-            rclone copy .travis_birth dropbox:/.travis_birth
-          else
-            BIRTHDAY=$(cat .travis_birth | cut -d= -f2)
-          fi
-
-          # Calculate lifetime
-          DAYS=$(( ( $(date -d "$TIMESTAMP" +%s) - $(date -d "$BIRTHDAY" +%s) ) / 86400 + 1 ))
-          WEEKS=$((DAYS / 7))
-          MONTHS=$((DAYS / 30))
-          YEARS=$((DAYS / 365))
-
-          echo "$TIMESTAMP :: Day $DAYS :: Week $WEEKS :: Month $MONTHS :: Year $YEARS :: Travis heartbeat OK" >> heartbeat.log
-
-          # Save to env
-          echo "START=$START" >> $GITHUB_ENV
-          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
-          echo "BIRTHDAY=$BIRTHDAY" >> $GITHUB_ENV
-          echo "DAYS=$DAYS" >> $GITHUB_ENV
-          echo "WEEKS=$WEEKS" >> $GITHUB_ENV
-          echo "MONTHS=$MONTHS" >> $GITHUB_ENV
-          echo "YEARS=$YEARS" >> $GITHUB_ENV
-
-      # ✅ Upload heartbeat.log to Dropbox
-      - name: Upload heartbeat.log to Dropbox
-        run: rclone copy heartbeat.log dropbox:/heartbeat.log
-
-      # ✅ Upload heartbeat.log to S3
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
 
-      # ✅ Generate expanded run summary JSON
-      - name: Generate run-summary.json
+      # ✅ NEW: Commit heartbeat.json into the repo so GitHub Pages can serve it
+      - name: Commit heartbeat.json
         run: |
-          END=$(date +%s)
-          DURATION=$((END - START))
-          COUNT=$(wc -l < heartbeat.log)
-          SIZE=$(wc -c < heartbeat.log)
-
-          cat > run-summary.json <<EOF
-          {
-            "timestamp": "${TIMESTAMP}",
-            "lifetime": {
-              "heartbeat_count": ${COUNT},
-              "birthday": "${BIRTHDAY}",
-              "days_alive": ${DAYS},
-              "weeks_alive": ${WEEKS},
-              "months_alive": ${MONTHS},
-              "years_alive": ${YEARS}
-            },
-            "status": {
-              "overall": "success",
-              "steps": {
-                "s3_upload": "ok",
-                "dropbox_upload": "ok",
-                "birthfile_check": "ok",
-                "state_push": "ok"
-              }
-            },
-            "runtime": {
-              "runner": "ubuntu-latest",
-              "duration_seconds": ${DURATION}
-            },
-            "resources": {
-              "heartbeat_log_size": ${SIZE},
-              "s3_bytes_used": ${SIZE},
-              "dropbox_bytes_used": ${SIZE}
-            },
-            "version": "1.0.0"
-          }
-          EOF
-
-          aws s3 cp run-summary.json s3://travis-of-the-cosmos/run-summary.json
-          rclone copy run-summary.json dropbox:/run-summary.json
-
-      # ✅ Push run summary into ChatGPT memory
-      - name: Push run-summary.json to ChatGPT memory
-        run: |
-          curl -s https://api.openai.com/v1/memories/update \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.OPENAI_API_KEY }}" \
-            -d "{
-              \"project\": \"TravisOfTheCosmos\",
-              \"update\": $(cat run-summary.json)
-            }"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add heartbeat.json
+          git commit -m "Update heartbeat.json [skip ci]" || echo "No changes to commit"
+          git push
