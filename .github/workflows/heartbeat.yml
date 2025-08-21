@@ -2,7 +2,7 @@ name: Travis Heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Every 5 minutes
+    - cron: "*/5 * * * *"   # Every 5 minutes (GitHub minimum)
   workflow_dispatch:
 
 jobs:
@@ -18,18 +18,16 @@ jobs:
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "$TIMESTAMP :: Travis heartbeat OK" >> heartbeat.log
 
-      # ✅ Install rclone for Dropbox
+      # ✅ Install rclone
       - name: Set up rclone
         run: |
           curl https://rclone.org/install.sh | sudo bash
           mkdir -p ~/.config/rclone
-          echo "[dropbox]" > ~/.config/rclone/rclone.conf
-          echo "type = dropbox" >> ~/.config/rclone/rclone.conf
-          echo "token = ${DROPBOX_TOKEN}" >> ~/.config/rclone/rclone.conf
+          echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
         env:
           DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
 
-      # ✅ Upload to Dropbox with rclone
+      # ✅ Upload to Dropbox
       - name: Upload to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
 
