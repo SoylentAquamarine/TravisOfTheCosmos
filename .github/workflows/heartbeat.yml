@@ -2,7 +2,7 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes for testing, change later
+    - cron: "*/5 * * * *"   # every 5 minutes for testing
   workflow_dispatch:
 
 jobs:
@@ -43,18 +43,17 @@ jobs:
 
       - name: Set up rclone
         run: |
-          cat <<EOF > rclone.conf
+          mkdir -p ~/.config/rclone
+          cat <<EOF > ~/.config/rclone/rclone.conf
           [dropbox]
           type = dropbox
           client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
           client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
-          token = {"access_token":"${{ secrets.DROPBOX_TOKEN }}","token_type":"bearer","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","expiry":"0001-01-01T00:00:00Z"}
+          token = ${{ secrets.DROPBOX_TOKEN_JSON }}
           EOF
-          mkdir -p ~/.config/rclone
-          mv rclone.conf ~/.config/rclone/rclone.conf
 
       - name: Upload heartbeat.log to Dropbox
-        run: rclone copy heartbeat.log dropbox:/heartbeat.log
+        run: rclone copy heartbeat.log dropbox:/heartbeat.log --retries 3 --low-level-retries 10
 
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
