@@ -38,33 +38,34 @@ jobs:
           echo "$TIMESTAMP heartbeat" >> heartbeat.log
           if [ ! -f travis_birth ]; then
             echo "$TIMESTAMP" > travis_birth
-            aws s3 cp travis_birth s3://travis-of-the-cosmos/.travis_birth
+            aws s3 cp travis_birth s3://travis-of-the-cosmos/.travis_birth || true
           fi
 
       - name: Install rclone
-        run: |
-          curl https://rclone.org/install.sh | sudo bash
+        run: curl https://rclone.org/install.sh | sudo bash
 
       - name: Set up rclone
         run: |
           cat > rclone.conf <<EOF
           [dropbox]
           type = dropbox
-          token = {"access_token":"${{ secrets.DROPBOX_TOKEN }}","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","token_type":"bearer","expiry":"0001-01-01T00:00:00Z","client_id":"${{ secrets.DROPBOX_CLIENT_ID }}","client_secret":"${{ secrets.DROPBOX_CLIENT_SECRET }}"}
+          client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
+          client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
+          token = {"access_token":"${{ secrets.DROPBOX_TOKEN }}","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","token_type":"bearer","expiry":"0001-01-01T00:00:00Z"}
           EOF
           mkdir -p ~/.config/rclone
           mv rclone.conf ~/.config/rclone/rclone.conf
 
       - name: Upload heartbeat.log to Dropbox
-        run: rclone copy heartbeat.log dropbox:/heartbeat.log
+        run: rclone copy heartbeat.log dropbox:/heartbeat.log || echo "Dropbox upload failed, continuing..."
 
       - name: Upload heartbeat.log to S3
-        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
+        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log || echo "S3 upload failed, continuing..."
 
       - name: Write breadcrumbs for persistence
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP breadcrumb" >> breadcrumbs.log
+          echo "$TIMESTAMP breadcrumb" >> breadcrumbs.log || true
 
       - name: Commit breadcrumbs to repo
         run: |
@@ -72,4 +73,4 @@ jobs:
           git config user.email "github-actions@github.com"
           git add breadcrumbs.log
           git commit -m "Update breadcrumbs [skip ci]" || echo "No changes to commit"
-          git push
+          git push || echo "Git push failed, continuing..."
