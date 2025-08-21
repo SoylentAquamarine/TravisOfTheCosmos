@@ -2,7 +2,7 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes for testing, change later to "*/90 * * * *"
+    - cron: "*/30 * * * *" # every 30 minutes
   workflow_dispatch:
 
 jobs:
@@ -10,52 +10,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout repo
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      # Download birthday file (if exists in S3)
       - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file"
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || true
 
-      # Download existing heartbeat log
       - name: Download existing heartbeat.log from S3 (if any)
-        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
 
-      # Generate heartbeat entry
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP Heartbeat OK" >> heartbeat.log
+          if [ ! -f .travis_birth ]; then
+            echo "$TIMESTAMP" > .travis_birth
+            aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
+          fi
+          BIRTH=$(cat .travis_birth)
+          NOW=$TIMESTAMP
+          ALIVE=$(($(date -d "$NOW" +%s) - $(date -d "$BIRTH" +%s)))
+          DAYS=$((ALIVE / 86400))
+          echo "$TIMESTAMP - Heartbeat detected. Alive for ${DAYS} days." >> heartbeat.log
 
-      # Install rclone
       - name: Set up rclone
-        run: curl https://rclone.org/install.sh | sudo bash
-
-      # Configure rclone for Dropbox (auto refresh with client_id/secret)
-      - name: Configure rclone for Dropbox
         run: |
+          curl https://rclone.org/install.sh | sudo bash
           mkdir -p ~/.config/rclone
           cat > ~/.config/rclone/rclone.conf <<EOF
           [dropbox]
           type = dropbox
-          client_id = ${DROPBOX_CLIENT_ID}
-          client_secret = ${DROPBOX_CLIENT_SECRET}
-          token_url = https://api.dropbox.com/oauth2/token
-          auth_url = https://www.dropbox.com/oauth2/authorize
-          scope = account_info.read files.content.read files.content.write
-          token = {"access_token":"","token_type":"bearer","refresh_token":"${DROPBOX_REFRESH_TOKEN}","expiry":"0001-01-01T00:00:00Z"}
+          client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
+          client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
+          token = {"access_token":"dummy","token_type":"bearer","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","expiry":"0001-01-01T00:00:00Z"}
           EOF
-        env:
-          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
-          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
-          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
 
-      # Upload heartbeat.log to Dropbox
       - name: Upload heartbeat.log to Dropbox
-        run: rclone copy heartbeat.log dropbox:/heartbeat.log
+        run: |
+          rclone copy heartbeat.log dropbox:/heartbeat.log
 
-      # Upload heartbeat.log to S3
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -64,4 +58,5 @@ jobs:
           aws-region: us-east-1
 
       - name: Upload heartbeat.log to S3
-        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
+        run: |
+          aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
