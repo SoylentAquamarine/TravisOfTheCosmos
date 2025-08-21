@@ -5,11 +5,17 @@ on:
     - cron: "*/5 * * * *"   # every 5 minutes for testing
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   beat:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up job
+        run: echo "Starting heartbeat job..."
+
       - name: Checkout repo
         uses: actions/checkout@v4
 
@@ -21,21 +27,19 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download birthday file if it exists
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file found"
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth ./travis_birth || echo "No birthday yet"
 
       - name: Download existing heartbeat.log from S3 (if any)
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous heartbeat log"
+        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log ./heartbeat.log || touch heartbeat.log
 
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "$TIMESTAMP heartbeat" >> heartbeat.log
-          if [ ! -f .travis_birth ]; then
-            echo "$TIMESTAMP" > .travis_birth
+          if [ ! -f travis_birth ]; then
+            echo "$TIMESTAMP" > travis_birth
+            aws s3 cp travis_birth s3://travis-of-the-cosmos/.travis_birth
           fi
-          aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
 
       - name: Install rclone
         run: |
@@ -43,24 +47,24 @@ jobs:
 
       - name: Set up rclone
         run: |
-          mkdir -p ~/.config/rclone
-          cat <<EOF > ~/.config/rclone/rclone.conf
+          cat > rclone.conf <<EOF
           [dropbox]
           type = dropbox
-          client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
-          client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
-          token = ${{ secrets.DROPBOX_TOKEN_JSON }}
+          token = {"access_token":"${{ secrets.DROPBOX_TOKEN }}","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","token_type":"bearer","expiry":"0001-01-01T00:00:00Z","client_id":"${{ secrets.DROPBOX_CLIENT_ID }}","client_secret":"${{ secrets.DROPBOX_CLIENT_SECRET }}"}
           EOF
+          mkdir -p ~/.config/rclone
+          mv rclone.conf ~/.config/rclone/rclone.conf
 
       - name: Upload heartbeat.log to Dropbox
-        run: rclone copy heartbeat.log dropbox:/heartbeat.log --retries 3 --low-level-retries 10
+        run: rclone copy heartbeat.log dropbox:/heartbeat.log
 
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
 
       - name: Write breadcrumbs for persistence
         run: |
-          echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") breadcrumb" >> breadcrumbs.log
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "$TIMESTAMP breadcrumb" >> breadcrumbs.log
 
       - name: Commit breadcrumbs to repo
         run: |
