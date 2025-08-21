@@ -2,7 +2,7 @@ name: Travis Heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Every 5 minutes (minimum for GitHub)
+    - cron: "*/5 * * * *"   # Every 5 minutes
   workflow_dispatch:
 
 jobs:
@@ -13,11 +13,19 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ✅ Try to pull birthday file (permanent, created once)
+      # ✅ Configure AWS first so Travis has credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ✅ Try to pull birthday file
       - name: Download birthday file if it exists
         run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file yet"
 
-      # ✅ Try to pull existing log so history persists
+      # ✅ Try to pull existing log
       - name: Download existing heartbeat.log from S3 (if any)
         run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous log"
 
@@ -59,14 +67,6 @@ jobs:
       # ✅ Upload heartbeat.log to Dropbox
       - name: Upload heartbeat.log to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
-
-      # ✅ Configure AWS credentials
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
 
       # ✅ Upload heartbeat.log to S3
       - name: Upload heartbeat.log to S3
