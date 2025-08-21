@@ -2,13 +2,16 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
+    - cron: "*/5 * * * *"   # every 5 minutes (adjust as needed)
   workflow_dispatch:
 
 jobs:
   beat:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up job
+        run: echo "Starting heartbeat..."
+
       - name: Checkout repo
         uses: actions/checkout@v3
 
@@ -20,7 +23,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file yet"
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || true
 
       - name: Download existing heartbeat.log from S3 (if any)
         run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
@@ -28,22 +31,21 @@ jobs:
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP" >> heartbeat.log
           if [ ! -f .travis_birth ]; then
             echo "$TIMESTAMP" > .travis_birth
             aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
           fi
+          echo "$TIMESTAMP" >> heartbeat.log
 
       - name: Set up rclone
         run: |
-          curl https://rclone.org/install.sh | sudo bash
           mkdir -p ~/.config/rclone
           cat > ~/.config/rclone/rclone.conf <<EOF
           [dropbox]
           type = dropbox
           client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
           client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
-          token = ${{ secrets.DROPBOX_TOKEN_JSON }}
+          token = {"access_token":"${{ secrets.DROPBOX_ACCESS_TOKEN }}","token_type":"bearer","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","expiry":"0001-01-01T00:00:00Z"}
           EOF
 
       - name: Upload heartbeat.log to Dropbox
@@ -51,3 +53,19 @@ jobs:
 
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
+
+      # 🔑 Breadcrumb step (NVRAM effect)
+      - name: Write breadcrumbs for persistence
+        run: |
+          BIRTH=$(head -n 1 .travis_birth)
+          LAST=$(tail -n 1 heartbeat.log)
+          COUNT=$(wc -l < heartbeat.log)
+          echo "{ \"birth\": \"$BIRTH\", \"last_heartbeat\": \"$LAST\", \"count\": $COUNT }" > .travis_state.json
+
+      - name: Commit breadcrumbs to repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .travis_state.json
+          git commit -m "Update state [skip ci]" || echo "No changes"
+          git push
