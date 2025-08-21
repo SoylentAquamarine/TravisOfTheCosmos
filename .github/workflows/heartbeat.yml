@@ -1,36 +1,40 @@
-name: Travis Heartbeat Dropbox Append
+name: Travis Heartbeat
 
 on:
   schedule:
+    # Every 5 minutes (GitHub minimum)
     - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Create log line
-        run: echo "Heartbeat success at $(date)" > line.txt
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - name: Upload append to Dropbox
+      - name: Generate heartbeat entry
         run: |
-          # Start session
-          SESSION=$(curl -s -X POST https://content.dropboxapi.com/2/files/upload_session/start \
-            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
-            --header "Content-Type: application/octet-stream" \
-            --data-binary @line.txt | jq -r '.session_id')
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "$TIMESTAMP :: Travis heartbeat OK" >> heartbeat.log
 
-          # Append to session
-          curl -X POST https://content.dropboxapi.com/2/files/upload_session/append_v2 \
-            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
-            --header "Content-Type: application/octet-stream" \
-            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": 0}}" \
-            --data-binary @line.txt
+      # ✅ Upload to Dropbox
+      - name: Upload to Dropbox
+        uses: tj-actions/dropbox@v3
+        with:
+          dropbox_access_token: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+          src: heartbeat.log
+          dest: /heartbeat.log
 
-          # Finish session and commit to file
-          FILESIZE=$(wc -c < line.txt)
-          curl -X POST https://content.dropboxapi.com/2/files/upload_session/finish \
-            --header "Authorization: Bearer ${{ secrets.DROPBOX_TOKEN }}" \
-            --header "Content-Type: application/octet-stream" \
-            --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \"$SESSION\", \"offset\": $FILESIZE}, \"commit\": {\"path\": \"/Travis/system/heartbeat.log\", \"mode\": \"add\", \"autorename\": false, \"mute\": false}}" \
-            --data-binary @line.txt
+      # ✅ Configure AWS
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # ✅ Upload to S3
+      - name: Upload heartbeat to S3
+        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
