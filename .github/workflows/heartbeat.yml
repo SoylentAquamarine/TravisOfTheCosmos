@@ -2,44 +2,30 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # every 30 minutes
+    - cron: "*/5 * * * *"   # every 5 minutes
   workflow_dispatch:
 
 jobs:
-  heartbeat:
+  beat:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
       - name: Download birthday file if it exists
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || true
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file yet"
 
       - name: Download existing heartbeat.log from S3 (if any)
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
+        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
 
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "$TIMESTAMP" >> heartbeat.log
           if [ ! -f .travis_birth ]; then
             echo "$TIMESTAMP" > .travis_birth
             aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
           fi
-          BIRTH=$(cat .travis_birth)
-          NOW=$TIMESTAMP
-          ALIVE=$(($(date -d "$NOW" +%s) - $(date -d "$BIRTH" +%s)))
-          DAYS=$((ALIVE / 86400))
-          echo "$TIMESTAMP - Heartbeat detected. Alive for ${DAYS} days." >> heartbeat.log
 
       - name: Set up rclone
         run: |
@@ -50,13 +36,18 @@ jobs:
           type = dropbox
           client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
           client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
-          token = {"access_token":"dummy","token_type":"bearer","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","expiry":"0001-01-01T00:00:00Z"}
+          token = ${{ secrets.DROPBOX_TOKEN_JSON }}
           EOF
 
       - name: Upload heartbeat.log to Dropbox
-        run: |
-          rclone copy heartbeat.log dropbox:/heartbeat.log
+        run: rclone copy heartbeat.log dropbox:/heartbeat.log
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
       - name: Upload heartbeat.log to S3
-        run: |
-          aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
+        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
