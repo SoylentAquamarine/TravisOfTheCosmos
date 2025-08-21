@@ -1,12 +1,16 @@
 name: dropbox-test
 
 on:
-  workflow_dispatch: # manual trigger only
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
+      - name: Set up job
+        run: echo "Starting Dropbox test..."
+
       - name: Install rclone
         run: curl https://rclone.org/install.sh | sudo bash || echo "rclone install failed"
 
@@ -15,11 +19,13 @@ jobs:
           cat > rclone.conf <<EOF
           [dropbox]
           type = dropbox
-          token = ${{ secrets.DROPBOX_TOKEN }}
+          client_id = ${{ secrets.DROPBOX_CLIENT_ID }}
+          client_secret = ${{ secrets.DROPBOX_CLIENT_SECRET }}
+          token = {"access_token":"","token_type":"bearer","refresh_token":"${{ secrets.DROPBOX_REFRESH_TOKEN }}","expiry":"0001-01-01T00:00:00Z"}
           EOF
 
       - name: Make test file
-        run: echo "Hello Dropbox, $(date)" > test.txt
+        run: echo "Hello Dropbox at $(date -u)" > test.txt
 
       - name: Upload test file to Dropbox
         run: rclone --config rclone.conf copy test.txt dropbox:/ || echo "Dropbox upload failed"
