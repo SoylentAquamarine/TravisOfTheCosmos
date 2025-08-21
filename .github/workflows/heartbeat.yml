@@ -2,7 +2,7 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes (adjust as needed)
+    - cron: "*/5 * * * *"   # every 5 minutes
   workflow_dispatch:
 
 jobs:
@@ -37,6 +37,11 @@ jobs:
           fi
           echo "$TIMESTAMP" >> heartbeat.log
 
+      # 🔧 Install rclone
+      - name: Install rclone
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
       - name: Set up rclone
         run: |
           mkdir -p ~/.config/rclone
@@ -54,7 +59,6 @@ jobs:
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
 
-      # 🔑 Breadcrumb step (NVRAM effect)
       - name: Write breadcrumbs for persistence
         run: |
           BIRTH=$(head -n 1 .travis_birth)
