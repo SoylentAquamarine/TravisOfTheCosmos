@@ -2,7 +2,7 @@ name: Travis Heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # Every 5 minutes (GitHub minimum)
+    - cron: "*/5 * * * *"   # Every 5 minutes (minimum for GitHub)
   workflow_dispatch:
 
 jobs:
@@ -13,15 +13,39 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ✅ Pull existing log so history persists
+      # ✅ Try to pull birthday file (permanent, created once)
+      - name: Download birthday file if it exists
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file yet"
+
+      # ✅ Try to pull existing log so history persists
       - name: Download existing heartbeat.log from S3 (if any)
         run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous log"
 
-      # ✅ Append new heartbeat entry
+      # ✅ Append new heartbeat entry with lifetime counters
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP :: Travis heartbeat OK" >> heartbeat.log
+
+          # Create birthday if missing
+          if [ ! -f .travis_birth ]; then
+            BIRTHDAY=$(date -u +"%Y-%m-%d")
+            echo "BIRTHDAY=$BIRTHDAY" > .travis_birth
+            aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
+            curl https://rclone.org/install.sh | sudo bash
+            mkdir -p ~/.config/rclone
+            echo "${DROPBOX_TOKEN}" > ~/.config/rclone/rclone.conf
+            rclone copy .travis_birth dropbox:/.travis_birth
+          else
+            BIRTHDAY=$(cat .travis_birth | cut -d= -f2)
+          fi
+
+          # Calculate lifetime
+          DAYS=$(( ( $(date -d "$TIMESTAMP" +%s) - $(date -d "$BIRTHDAY" +%s) ) / 86400 + 1 ))
+          WEEKS=$((DAYS / 7))
+          MONTHS=$((DAYS / 30))
+          YEARS=$((DAYS / 365))
+
+          echo "$TIMESTAMP :: Day $DAYS :: Week $WEEKS :: Month $MONTHS :: Year $YEARS :: Travis heartbeat OK" >> heartbeat.log
 
       # ✅ Install rclone for Dropbox
       - name: Set up rclone
@@ -32,8 +56,8 @@ jobs:
         env:
           DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
 
-      # ✅ Upload to Dropbox
-      - name: Upload to Dropbox
+      # ✅ Upload heartbeat.log to Dropbox
+      - name: Upload heartbeat.log to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
 
       # ✅ Configure AWS credentials
@@ -44,6 +68,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ✅ Upload to S3
-      - name: Upload heartbeat to S3
+      # ✅ Upload heartbeat.log to S3
+      - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
