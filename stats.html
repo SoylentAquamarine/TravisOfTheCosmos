@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stats – Travis Of The Cosmos</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>Statistics</h1>
+  <canvas id="uptimeChart" width="600" height="300"></canvas>
+  <script>
+    async function loadStats() {
+      const resp = await fetch("heartbeat.json");
+      const data = await resp.json();
+
+      new Chart(document.getElementById("uptimeChart"), {
+        type: 'bar',
+        data: {
+          labels: ["Days", "Weeks", "Months", "Years"],
+          datasets: [{
+            label: 'Alive',
+            data: [data.days, data.weeks, data.months, data.years]
+          }]
+        }
+      });
+    }
+    loadStats();
+  </script>
+  <p><a href="index.html">← Back to Home</a></p>
+</body>
+</html>
