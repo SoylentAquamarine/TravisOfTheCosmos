@@ -13,12 +13,17 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # ✅ Pull existing log so history persists
+      - name: Download existing heartbeat.log from S3 (if any)
+        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous log"
+
+      # ✅ Append new heartbeat entry
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "$TIMESTAMP :: Travis heartbeat OK" >> heartbeat.log
 
-      # ✅ Install rclone
+      # ✅ Install rclone for Dropbox
       - name: Set up rclone
         run: |
           curl https://rclone.org/install.sh | sudo bash
@@ -31,7 +36,7 @@ jobs:
       - name: Upload to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
 
-      # ✅ Configure AWS
+      # ✅ Configure AWS credentials
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
