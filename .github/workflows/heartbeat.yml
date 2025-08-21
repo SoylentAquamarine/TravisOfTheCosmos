@@ -2,34 +2,42 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # every 30 minutes (adjust if needed)
+    - cron: "*/5 * * * *"   # every 5 minutes
   workflow_dispatch:
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Download birthday file if it exists
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file yet"
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file yet"
 
       - name: Download existing heartbeat.log from S3 (if any)
-        run: |
-          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
+        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No heartbeat yet"
 
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP heartbeat" >> heartbeat.log
-          # Create/update heartbeat.json for the website
-          echo "{\"timestamp\": \"$TIMESTAMP\"}" > heartbeat.json
+          if [ ! -f .travis_birth ]; then
+            echo "$TIMESTAMP" > .travis_birth
+          fi
+          BIRTH=$(cat .travis_birth)
+          echo "$TIMESTAMP | Born: $BIRTH" >> heartbeat.log
 
       - name: Set up rclone
         run: curl https://rclone.org/install.sh | sudo bash
+
+      - name: Configure rclone for Dropbox
+        run: |
+          mkdir -p ~/.config/rclone
+          echo "[dropbox]" > ~/.config/rclone/rclone.conf
+          echo "type = dropbox" >> ~/.config/rclone/rclone.conf
+          echo "token = ${DROPBOX_TOKEN}" >> ~/.config/rclone/rclone.conf
+        env:
+          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
 
       - name: Upload heartbeat.log to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
@@ -44,11 +52,5 @@ jobs:
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
 
-      # ✅ NEW: Commit heartbeat.json into the repo so GitHub Pages can serve it
-      - name: Commit heartbeat.json
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add heartbeat.json
-          git commit -m "Update heartbeat.json [skip ci]" || echo "No changes to commit"
-          git push
+      - name: Upload birthday file to S3 (if new)
+        run: aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth --exact-timestamps
