@@ -2,11 +2,11 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # runs every 5 minutes
-  workflow_dispatch:         # allows manual run button
+    - cron: "*/5 * * * *"   # every 5 minutes for testing, change later
+  workflow_dispatch:
 
 jobs:
-  heartbeat:
+  beat:
     runs-on: ubuntu-latest
 
     steps:
@@ -21,10 +21,12 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth ./.travis_birth || true
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birthday file found"
 
       - name: Download existing heartbeat.log from S3 (if any)
-        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log ./heartbeat.log || true
+        run: |
+          aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No previous heartbeat log"
 
       - name: Generate heartbeat entry
         run: |
@@ -32,8 +34,8 @@ jobs:
           echo "$TIMESTAMP heartbeat" >> heartbeat.log
           if [ ! -f .travis_birth ]; then
             echo "$TIMESTAMP" > .travis_birth
-            aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
           fi
+          aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth
 
       - name: Install rclone
         run: |
@@ -59,12 +61,12 @@ jobs:
 
       - name: Write breadcrumbs for persistence
         run: |
-          echo "last_run=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" > breadcrumbs.txt
+          echo "$(date -u +"%Y-%m-%dT%H:%M:%SZ") breadcrumb" >> breadcrumbs.log
 
       - name: Commit breadcrumbs to repo
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git add breadcrumbs.txt
-          git commit -m "update breadcrumbs" || echo "No changes to commit"
+          git add breadcrumbs.log
+          git commit -m "Update breadcrumbs [skip ci]" || echo "No changes to commit"
           git push
