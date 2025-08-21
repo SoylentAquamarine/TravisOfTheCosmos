@@ -2,46 +2,60 @@ name: heartbeat
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
+    - cron: "*/5 * * * *"   # every 5 minutes for testing, change later to "*/90 * * * *"
   workflow_dispatch:
 
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
+
     steps:
+      # Checkout repo
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Download birthday file (if exists in S3)
       - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file yet"
+        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth .travis_birth || echo "No birth file"
 
+      # Download existing heartbeat log
       - name: Download existing heartbeat.log from S3 (if any)
-        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || echo "No heartbeat yet"
+        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log heartbeat.log || touch heartbeat.log
 
+      # Generate heartbeat entry
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          if [ ! -f .travis_birth ]; then
-            echo "$TIMESTAMP" > .travis_birth
-          fi
-          BIRTH=$(cat .travis_birth)
-          echo "$TIMESTAMP | Born: $BIRTH" >> heartbeat.log
+          echo "$TIMESTAMP Heartbeat OK" >> heartbeat.log
 
+      # Install rclone
       - name: Set up rclone
         run: curl https://rclone.org/install.sh | sudo bash
 
+      # Configure rclone for Dropbox (auto refresh with client_id/secret)
       - name: Configure rclone for Dropbox
         run: |
           mkdir -p ~/.config/rclone
-          echo "[dropbox]" > ~/.config/rclone/rclone.conf
-          echo "type = dropbox" >> ~/.config/rclone/rclone.conf
-          echo "token = ${DROPBOX_TOKEN}" >> ~/.config/rclone/rclone.conf
+          cat > ~/.config/rclone/rclone.conf <<EOF
+          [dropbox]
+          type = dropbox
+          client_id = ${DROPBOX_CLIENT_ID}
+          client_secret = ${DROPBOX_CLIENT_SECRET}
+          token_url = https://api.dropbox.com/oauth2/token
+          auth_url = https://www.dropbox.com/oauth2/authorize
+          scope = account_info.read files.content.read files.content.write
+          token = {"access_token":"","token_type":"bearer","refresh_token":"${DROPBOX_REFRESH_TOKEN}","expiry":"0001-01-01T00:00:00Z"}
+          EOF
         env:
-          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
+          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
+          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
 
+      # Upload heartbeat.log to Dropbox
       - name: Upload heartbeat.log to Dropbox
         run: rclone copy heartbeat.log dropbox:/heartbeat.log
 
+      # Upload heartbeat.log to S3
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -51,6 +65,3 @@ jobs:
 
       - name: Upload heartbeat.log to S3
         run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log
-
-      - name: Upload birthday file to S3 (if new)
-        run: aws s3 cp .travis_birth s3://travis-of-the-cosmos/.travis_birth --exact-timestamps
