@@ -24,7 +24,7 @@ jobs:
       - name: Run Google Drive Heartbeat
         env:
           GOOGLE_SVC_CREDENTIALS: ${{ secrets.GOOGLE_SVC_CREDENTIALS }}
-          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          FOLDER_ID: ${{ secrets.FOLDER_ID }}
         run: |
           python - <<'EOF'
           import os, json, time, io
@@ -41,9 +41,9 @@ jobs:
           service = build("drive", "v3", credentials=creds)
 
           # Get folder_id from GitHub Secret
-          folder_id = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
+          folder_id = os.environ.get("FOLDER_ID")
           if not folder_id:
-              raise Exception("Missing GOOGLE_DRIVE_FOLDER_ID secret")
+              raise Exception("Missing FOLDER_ID secret")
 
           # Heartbeat metadata
           timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
