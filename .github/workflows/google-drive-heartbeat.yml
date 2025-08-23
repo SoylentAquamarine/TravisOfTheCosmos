@@ -19,11 +19,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+        run: pip install google-auth google-auth-httplib2 google-api-python-client
 
       - name: Run Google Drive Heartbeat
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_SVC_CREDENTIALS }}
+          GOOGLE_SVC_CREDENTIALS: ${{ secrets.GOOGLE_SVC_CREDENTIALS }}
         run: |
           python - <<'EOF'
           import os, json, time, io
@@ -31,13 +31,12 @@ jobs:
           from googleapiclient.discovery import build
           from googleapiclient.http import MediaIoBaseUpload
 
-          # Load credentials from GitHub secret
-          creds_json = os.environ["GOOGLE_CREDENTIALS"]
+          # Load service account credentials
+          creds_json = os.environ["GOOGLE_SVC_CREDENTIALS"]
           creds_dict = json.loads(creds_json)
           creds = service_account.Credentials.from_service_account_info(
               creds_dict, scopes=["https://www.googleapis.com/auth/drive"]
           )
-
           service = build("drive", "v3", credentials=creds)
 
           # Heartbeat metadata
@@ -46,32 +45,18 @@ jobs:
           content = f"Heartbeat at {timestamp}"
           media = MediaIoBaseUpload(io.BytesIO(content.encode()), mimetype="text/plain")
 
+          # ✅ Replace with your Drive folder ID
+          folder_id = "PUT-YOUR-FOLDER-ID-HERE"
+          file_metadata = {"name": filename, "parents": [folder_id]}
+
           try:
               file = service.files().create(
-                  body={"name": filename},
+                  body=file_metadata,
                   media_body=media,
-                  fields="id"
+                  fields="id, parents"
               ).execute()
-
               print(f"✅ Heartbeat written to Google Drive: {filename} (id: {file['id']})")
-
-              # Simulated NVRAM breadcrumbs
-              breadcrumb = {
-                  "source": "GoogleDrive",
-                  "status": "success",
-                  "timestamp": timestamp,
-                  "file_id": file["id"]
-              }
-              print("Breadcrumb:", json.dumps(breadcrumb))
-
           except Exception as e:
               print(f"❌ Heartbeat failed: {e}")
-              breadcrumb = {
-                  "source": "GoogleDrive",
-                  "status": "failure",
-                  "timestamp": timestamp,
-                  "error": str(e)
-              }
-              print("Breadcrumb:", json.dumps(breadcrumb))
               exit(1)
           EOF
