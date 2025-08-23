@@ -1,25 +1,20 @@
-name: Travis FTP Heartbeat
+name: Travis FTP Test
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch:
- 
+
 jobs:
-  ftpbeat:
+  testftp:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Create test file
+        run: echo "FTP test $(date -u)" > test.txt
 
-      - name: Write heartbeat
-        run: echo "Travis heartbeat: $(date -u)" >> ftp_heartbeat.log
-
-      - name: Upload via FTP
+      - name: FTP upload
         uses: sebastianpopp/ftp-action@v2
         with:
           host: ftp.drivehq.com
           user: ${{ secrets.DRIVEHQ_FTP_USER }}
           password: ${{ secrets.DRIVEHQ_FTP_PASSWORD }}
-          localDir: .
-          remoteDir: /drivehqshare/travis
+          localFiles: test.txt
+          remoteDir: /drivehqshare
