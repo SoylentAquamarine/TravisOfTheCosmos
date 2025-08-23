@@ -1,0 +1,50 @@
+name: Travis S3 Heartbeat
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  s3beat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Timestamp heartbeat
+        id: heartbeat
+        run: |
+          echo "Travis heartbeat: $(date -u)" >> s3_heartbeat.log
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build NVRAM JSON
+        run: |
+          cat > travis.json <<'EOF'
+          {
+            "bot": "Travis of the Cosmos",
+            "status": "alive",
+            "last_check": "${{ steps.heartbeat.outputs.timestamp }}",
+            "subsystems": {
+              "s3": {
+                "bucket": "${{ secrets.S3_BUCKET }}",
+                "region": "${{ secrets.AWS_REGION }}",
+                "heartbeat_file": "s3_heartbeat.log",
+                "cadence": "every 5 minutes",
+                "last_updated": "${{ steps.heartbeat.outputs.timestamp }}"
+              }
+            }
+          }
+          EOF
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload heartbeat + NVRAM
+        run: |
+          aws s3 cp s3_heartbeat.log s3://${{ secrets.S3_BUCKET }}/s3_heartbeat.log
+          aws s3 cp travis.json s3://${{ secrets.S3_BUCKET }}/travis.json
