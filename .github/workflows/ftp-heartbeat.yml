@@ -11,10 +11,10 @@ jobs:
         run: echo "FTP test $(date -u)" > test.txt
 
       - name: FTP upload
-        uses: sebastianpopp/ftp-action@v2
+        uses: SamKirkland/FTP-Deploy-Action@4.3.4
         with:
-          host: ftp.drivehq.com
-          user: ${{ secrets.DRIVEHQ_FTP_USER }}
+          server: ftp.drivehq.com
+          username: ${{ secrets.DRIVEHQ_FTP_USER }}
           password: ${{ secrets.DRIVEHQ_FTP_PASSWORD }}
-          localFiles: test.txt
-          remoteDir: /drivehqshare
+          local-dir: .
+          server-dir: /drivehqshare/
