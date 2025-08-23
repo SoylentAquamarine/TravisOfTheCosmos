@@ -1,51 +1,47 @@
-{
-  "bot": "Travis of the Cosmos",
-  "status": "alive",
-  "last_check": "2025-08-23T15:22:00-04:00",
-  "subsystems": {
-    "s3": {
-      "bucket": "travis-heartbeat",
-      "region": "us-east-2",
-      "iam_user": "travis-bot",
-      "secrets_last_updated": "2025-08-20",
-      "heartbeat": {
-        "oldest": {
-          "timestamp": "2025-08-20T09:56:00-04:00",
-          "relative": "≈ 3 days ago"
-        },
-        "newest": {
-          "timestamp": "2025-08-23T11:56:00-04:00",
-          "relative": "≈ 4 minutes ago"
-        },
-        "cadence": "every 5 minutes",
-        "avg_runtime": "25s",
-        "log_size": "4.2 KB"
-      },
-      "alerts": [
-        "No gaps detected",
-        "IAM policy not rotated recently"
-      ]
-    },
-    "drivehq": {
-      "server": "ftp.drivehq.com",
-      "remote_dir": "/My Documents/",
-      "heartbeat": {
-        "oldest": {
-          "timestamp": "2025-08-23T10:00:00-04:00",
-          "relative": "≈ 5 hours ago"
-        },
-        "newest": {
-          "timestamp": "2025-08-23T15:20:00-04:00",
-          "relative": "≈ 2 minutes ago"
-        },
-        "cadence": "every 5 minutes",
-        "avg_runtime": "4s",
-        "log_size": "1.1 KB"
-      },
-      "alerts": [
-        "First publish created sync state file",
-        "Free plan — slower transfer"
-      ]
-    }
-  }
-}
+name: Travis FTP Heartbeat
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  ftpbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Timestamp heartbeat
+        id: heartbeat
+        run: |
+          echo "Travis heartbeat: $(date -u)" >> ftp_heartbeat.log
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Build NVRAM JSON
+        run: |
+          cat > travis.json <<'EOF'
+          {
+            "bot": "Travis of the Cosmos",
+            "status": "alive",
+            "last_check": "${{ steps.heartbeat.outputs.timestamp }}",
+            "subsystems": {
+              "drivehq": {
+                "server": "ftp.drivehq.com",
+                "remote_dir": "/My Documents/",
+                "heartbeat_file": "ftp_heartbeat.log",
+                "cadence": "every 5 minutes",
+                "last_updated": "${{ steps.heartbeat.outputs.timestamp }}"
+              }
+            }
+          }
+          EOF
+
+      - name: Upload heartbeat + NVRAM
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ftp.drivehq.com
+          username: ${{ secrets.DRIVEHQ_FTP_USER }}
+          password: ${{ secrets.DRIVEHQ_FTP_PASSWORD }}
+          local-dir: ./
+          server-dir: /My Documents/
