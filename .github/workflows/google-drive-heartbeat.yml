@@ -2,7 +2,7 @@ name: Google Drive Heartbeat
 
 on:
   schedule:
-    - cron: "*/2 * * * *"   # every 2 minutes (~90 sec target, limited by cron granularity)
+    - cron: "*/2 * * * *"   # run every 2 minutes
   workflow_dispatch:
 
 jobs:
@@ -25,10 +25,13 @@ jobs:
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          import os, json, time
+          python - <<'EOF'
+          import os, json, time, io
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
+          from googleapiclient.http import MediaIoBaseUpload
 
+          # Load credentials from GitHub secret
           creds_json = os.environ["GOOGLE_CREDENTIALS"]
           creds_dict = json.loads(creds_json)
           creds = service_account.Credentials.from_service_account_info(
@@ -37,21 +40,38 @@ jobs:
 
           service = build("drive", "v3", credentials=creds)
 
-          # Heartbeat filename
+          # Heartbeat metadata
           timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
           filename = f"heartbeat-{timestamp}.txt"
-
-          # Create a file in Drive root
-          file_metadata = {"name": filename}
-          media_body = MediaInMemoryUpload(f"Heartbeat at {timestamp}".encode(), mimetype="text/plain")
+          content = f"Heartbeat at {timestamp}"
+          media = MediaIoBaseUpload(io.BytesIO(content.encode()), mimetype="text/plain")
 
           try:
               file = service.files().create(
-                  body=file_metadata,
-                  media_body=media_body,
+                  body={"name": filename},
+                  media_body=media,
                   fields="id"
               ).execute()
-              print(f"✅ Heartbeat written to Google Drive: {filename}")
+
+              print(f"✅ Heartbeat written to Google Drive: {filename} (id: {file['id']})")
+
+              # Simulated NVRAM breadcrumbs
+              breadcrumb = {
+                  "source": "GoogleDrive",
+                  "status": "success",
+                  "timestamp": timestamp,
+                  "file_id": file["id"]
+              }
+              print("Breadcrumb:", json.dumps(breadcrumb))
+
           except Exception as e:
               print(f"❌ Heartbeat failed: {e}")
+              breadcrumb = {
+                  "source": "GoogleDrive",
+                  "status": "failure",
+                  "timestamp": timestamp,
+                  "error": str(e)
+              }
+              print("Breadcrumb:", json.dumps(breadcrumb))
               exit(1)
+          EOF
