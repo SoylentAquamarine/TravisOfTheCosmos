@@ -3,77 +3,40 @@ name: heartbeat
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/5 * * * *"  # run every 5 minutes (adjust as needed)
+    - cron: "*/5 * * * *"  # every 5 minutes
 
 jobs:
   beat:
     runs-on: ubuntu-latest
     steps:
       - name: Start job
-        run: echo "Starting heartbeat job..." || true
+        run: echo "Starting main heartbeat job..."
 
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          persist-credentials: false  # re-auth manually
-        continue-on-error: true
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-        continue-on-error: true
-
-      - name: Download birthday file if it exists
-        run: aws s3 cp s3://travis-of-the-cosmos/.travis_birth ./travis_birth || echo "No birthday yet"
-        continue-on-error: true
-
-      - name: Download existing heartbeat.log from S3 (if any)
-        run: aws s3 cp s3://travis-of-the-cosmos/heartbeat.log ./heartbeat.log || touch heartbeat.log
-        continue-on-error: true
+      - name: Download existing heartbeat.log (if any)
+        run: |
+          if [ -f heartbeat.log ]; then
+            echo "Found existing heartbeat.log"
+          else
+            touch heartbeat.log
+          fi
 
       - name: Generate heartbeat entry
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          echo "$TIMESTAMP heartbeat" >> heartbeat.log
-        continue-on-error: true
-
-      - name: Install rclone
-        run: curl https://rclone.org/install.sh | sudo bash || echo "rclone install failed"
-        continue-on-error: true
-
-      - name: Set up rclone
-        run: |
-          cat > rclone.conf <<EOF
-          [dropbox]
-          type = dropbox
-          token = ${DROPBOX_TOKEN_JSON}
-          EOF
-        env:
-          DROPBOX_TOKEN_JSON: ${{ secrets.DROPBOX_TOKEN_JSON }}
-        continue-on-error: true
-
-      - name: Upload heartbeat.log to Dropbox
-        run: rclone --config rclone.conf copy heartbeat.log dropbox:/heartbeat.log || echo "Dropbox upload failed, continuing..."
-        continue-on-error: true
-
-      - name: Upload heartbeat.log to S3
-        run: aws s3 cp heartbeat.log s3://travis-of-the-cosmos/heartbeat.log || echo "S3 upload failed, continuing..."
-        continue-on-error: true
+          echo "$TIMESTAMP all is well" >> heartbeat.log
 
       - name: Write breadcrumbs for persistence
         run: |
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           echo "$TIMESTAMP breadcrumb" >> breadcrumbs.log
-        continue-on-error: true
 
-      - name: Commit breadcrumbs to repo
+      - name: Commit heartbeat + breadcrumbs to repo
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
-          git add breadcrumbs.log
-          git commit -m "Update breadcrumbs [skip ci]" || echo "No changes to commit"
+          git add heartbeat.log breadcrumbs.log
+          git commit -m "Update heartbeat + breadcrumbs [skip ci]" || echo "No changes to commit"
           git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} HEAD:main || echo "GitHub push failed, continuing..."
-        continue-on-error: true
