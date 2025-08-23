@@ -11,7 +11,7 @@ jobs:
         run: echo "FTP test $(date -u)" > test.txt
 
       - name: FTP upload
-        uses: SamKirkland/FTP-Deploy-Action@4.3.4
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
         with:
           server: ftp.drivehq.com
           username: ${{ secrets.DRIVEHQ_FTP_USER }}
