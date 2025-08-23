@@ -17,4 +17,4 @@ jobs:
           username: ${{ secrets.DRIVEHQ_FTP_USER }}
           password: ${{ secrets.DRIVEHQ_FTP_PASSWORD }}
           local-dir: ./
-          server-dir: /drivehqshare/
+          server-dir: /My Documents/
