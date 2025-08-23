@@ -1,0 +1,57 @@
+name: Google Drive Heartbeat
+
+on:
+  schedule:
+    - cron: "*/2 * * * *"   # every 2 minutes (~90 sec target, limited by cron granularity)
+  workflow_dispatch:
+
+jobs:
+  drive-heartbeat:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install google-auth google-auth-oauthlib google-auth-httplib2 google-api-python-client
+
+      - name: Run Google Drive Heartbeat
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: |
+          import os, json, time
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+
+          creds_json = os.environ["GOOGLE_CREDENTIALS"]
+          creds_dict = json.loads(creds_json)
+          creds = service_account.Credentials.from_service_account_info(
+              creds_dict, scopes=["https://www.googleapis.com/auth/drive"]
+          )
+
+          service = build("drive", "v3", credentials=creds)
+
+          # Heartbeat filename
+          timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+          filename = f"heartbeat-{timestamp}.txt"
+
+          # Create a file in Drive root
+          file_metadata = {"name": filename}
+          media_body = MediaInMemoryUpload(f"Heartbeat at {timestamp}".encode(), mimetype="text/plain")
+
+          try:
+              file = service.files().create(
+                  body=file_metadata,
+                  media_body=media_body,
+                  fields="id"
+              ).execute()
+              print(f"✅ Heartbeat written to Google Drive: {filename}")
+          except Exception as e:
+              print(f"❌ Heartbeat failed: {e}")
+              exit(1)
