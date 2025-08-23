@@ -23,7 +23,7 @@ jobs:
 
       - name: Run Google Drive Heartbeat
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_SVC_CREDENTIALS }}
         run: |
           python - <<'EOF'
           import os, json, time, io
