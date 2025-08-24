@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Write heartbeat
-        run: echo "Camera heartbeat: $(date -u)" >> cam_heartbeat.log
+        shell: bash
+        run: |
+          echo "Camera heartbeat: $(date -u)" >> cam_heartbeat.log
 
       - name: FTP upload
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4
