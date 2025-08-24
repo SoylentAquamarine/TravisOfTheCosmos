@@ -1,0 +1,22 @@
+name: CAM-heartbeat
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:
+
+jobs:
+  cambeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write heartbeat
+        run: echo "Camera heartbeat: $(date -u)" >> cam_heartbeat.log
+
+      - name: FTP upload
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ftp.cameraftp.com
+          username: ${{ secrets.DRIVEHQ_CAM_USER }}
+          password: ${{ secrets.DRIVEHQ_CAM_PW }}
+          local-dir: ./
+          server-dir: /
